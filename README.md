@@ -1,7 +1,6 @@
 # Sutton and Barto from Scratch 1: Bandits and Dynamic Programming
 
 [![CI](https://github.com/sanjayk36725/sutton-and-barto-from-scratch-1-bandits-and-dynamic-programming/actions/workflows/ci.yml/badge.svg)](https://github.com/sanjayk36725/sutton-and-barto-from-scratch-1-bandits-and-dynamic-programming/actions/workflows/ci.yml)
-[![SonarQube Cloud](https://sonarcloud.io/api/project_badges/measure?project=sanjayk36725_sutton-and-barto-from-scratch-1-bandits-and-dynamic-programming&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=sanjayk36725_sutton-and-barto-from-scratch-1-bandits-and-dynamic-programming)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A from-scratch Python implementation of the first reinforcement-learning foundations in Sutton & Barto: k-armed bandits, exploration strategies, and dynamic programming for small Markov decision processes.
@@ -52,10 +51,9 @@ python -m pytest -q
 ├── tests/test_validation.py         # Validation and edge-case tests
 ├── requirements.txt                 # Runtime/test dependencies
 ├── pyproject.toml                   # Project metadata and pytest config
-├── sonar-project.properties         # SonarQube Cloud analysis settings
 ├── LICENSE                           # MIT license
 ├── docs/                             # Browser-friendly project documentation
-└── .github/workflows/               # CI and SonarQube workflows
+└── .github/workflows/ci.yml         # Automated test workflow
 ```
 
 ## Reproducibility and safety
@@ -72,11 +70,7 @@ Run the test suite and coverage locally before submitting a change:
 python -m pytest --cov=model --cov-report=term-missing -q
 ```
 
-GitHub Actions runs the test suite across Python 3.10, 3.11, and 3.12. A separate SonarQube Cloud workflow publishes coverage and performs static analysis.
-
-## SonarQube Cloud setup
-
-The repository contains the SonarQube project configuration and GitHub Actions workflow. The GitHub repository must provide a `SONAR_TOKEN` Actions secret for the SonarQube Cloud scan. SonarQube Cloud uses the configured quality gate to determine whether the main branch passes or fails.
+GitHub Actions runs the test suite across Python 3.10, 3.11, and 3.12.
 
 ## Reference
 
