@@ -5,10 +5,29 @@ from __future__ import annotations
 import numpy as np
 
 
+MAX_SIMULATION_STEPS = 100_000
+MAX_BANDIT_ARMS = 10_000
+MAX_GRID_CELLS = 10_000
+MAX_GAMBLER_GOAL = 10_000
+
+
+def _validate_size(value: int, name: str, maximum: int) -> int:
+    """Validate an integer size before using it in a NumPy allocation."""
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
+        raise TypeError(f"{name} must be an integer")
+    value = int(value)
+    if value <= 0:
+        raise ValueError(f"{name} must be positive")
+    if value > maximum:
+        raise ValueError(f"{name} must be <= {maximum}")
+    return value
+
+
 def create_bandit_testbed(k: int, seed: int, mean: float = 0.0, std: float = 1.0) -> np.ndarray:
-    if k <= 0:
-        raise ValueError("k must be positive")
-    rng = np.random.RandomState(seed)
+    k = _validate_size(k, "k", MAX_BANDIT_ARMS)
+    if std < 0:
+        raise ValueError("std must be non-negative")
+    rng = np.random.default_rng(seed)
     return rng.normal(loc=mean, scale=std, size=k)
 
 
@@ -30,6 +49,8 @@ def epsilon_greedy_action(q_values, epsilon: float, rng) -> int:
     if not 0.0 <= epsilon <= 1.0:
         raise ValueError("epsilon must be in [0, 1]")
     q = np.asarray(q_values, dtype=float)
+    if q.size == 0:
+        raise ValueError("q_values must not be empty")
     if rng.random() < epsilon:
         return int(rng.integers(len(q)))
     best = np.flatnonzero(np.isclose(q, np.max(q)))
@@ -39,7 +60,9 @@ def epsilon_greedy_action(q_values, epsilon: float, rng) -> int:
 def run_bandit_episode(true_values, n_steps: int, epsilon: float, rng, initial_q: float = 0.0):
     if n_steps < 0:
         raise ValueError("n_steps must be non-negative")
-    k = len(true_values)
+    if n_steps > MAX_SIMULATION_STEPS:
+        raise ValueError(f"n_steps must be <= {MAX_SIMULATION_STEPS}")
+    k = _validate_size(len(true_values), "number of bandit arms", MAX_BANDIT_ARMS)
     q = np.full(k, float(initial_q))
     counts = np.zeros(k, dtype=int)
     rewards = np.empty(n_steps, dtype=float)
@@ -52,7 +75,11 @@ def run_bandit_episode(true_values, n_steps: int, epsilon: float, rng, initial_q
 
 
 def track_rewards_and_optimal_actions(true_values, n_steps: int, epsilon: float, rng):
-    k = len(true_values)
+    if n_steps < 0:
+        raise ValueError("n_steps must be non-negative")
+    if n_steps > MAX_SIMULATION_STEPS:
+        raise ValueError(f"n_steps must be <= {MAX_SIMULATION_STEPS}")
+    k = _validate_size(len(true_values), "number of bandit arms", MAX_BANDIT_ARMS)
     q = np.zeros(k, dtype=float)
     counts = np.zeros(k, dtype=int)
     rewards = np.empty(n_steps, dtype=float)
@@ -68,8 +95,9 @@ def track_rewards_and_optimal_actions(true_values, n_steps: int, epsilon: float,
 
 
 def average_bandit_curves(k: int, n_runs: int, n_steps: int, epsilon: float, seed: int = 0):
-    if n_runs <= 0:
-        raise ValueError("n_runs must be positive")
+    k = _validate_size(k, "k", MAX_BANDIT_ARMS)
+    n_runs = _validate_size(n_runs, "n_runs", MAX_SIMULATION_STEPS)
+    n_steps = _validate_size(n_steps, "n_steps", MAX_SIMULATION_STEPS)
     reward_sum = np.zeros(n_steps)
     optimal_sum = np.zeros(n_steps)
     for run in range(n_runs):
@@ -97,8 +125,7 @@ def constant_step_size_update(q_values, action: int, reward: float, alpha: float
 
 
 def optimistic_initialization(k: int, initial_value: float = 5.0):
-    if k <= 0:
-        raise ValueError("k must be positive")
+    k = _validate_size(k, "k", MAX_BANDIT_ARMS)
     return np.full(k, float(initial_value))
 
 
@@ -125,6 +152,8 @@ def gradient_bandit_update(preferences, action: int, reward: float, average_rewa
 
 
 def bandit_parameter_study(n_runs: int, n_steps: int, seed: int, settings):
+    n_runs = _validate_size(n_runs, "n_runs", MAX_SIMULATION_STEPS)
+    n_steps = _validate_size(n_steps, "n_steps", MAX_SIMULATION_STEPS)
     results = []
     for setting in settings:
         method = setting["method"]
@@ -141,7 +170,7 @@ def bandit_parameter_study(n_runs: int, n_steps: int, seed: int, settings):
             if method == "optimistic":
                 q[:] = param
             for t in range(1, n_steps + 1):
-                if method == "epsilon_greedy" or method == "optimistic":
+                if method in {"epsilon_greedy", "optimistic"}:
                     eps = param if method == "epsilon_greedy" else 0.0
                     action = epsilon_greedy_action(q, eps, rng)
                 elif method == "ucb":
@@ -156,8 +185,8 @@ def bandit_parameter_study(n_runs: int, n_steps: int, seed: int, settings):
                 rewards.append(reward)
                 counts[action] += 1
                 if method == "gradient":
-                    avg_reward += (reward - avg_reward) / t
                     prefs = gradient_bandit_update(prefs, action, reward, avg_reward, param)
+                    avg_reward += (reward - avg_reward) / t
                 else:
                     q[action] += (reward - q[action]) / counts[action]
             run_scores.append(float(np.mean(rewards)))
@@ -166,8 +195,10 @@ def bandit_parameter_study(n_runs: int, n_steps: int, seed: int, settings):
 
 
 def build_gridworld_mdp(rows: int = 4, cols: int = 4):
-    if rows <= 0 or cols <= 0:
-        raise ValueError("rows and cols must be positive")
+    rows = _validate_size(rows, "rows", MAX_GRID_CELLS)
+    cols = _validate_size(cols, "cols", MAX_GRID_CELLS)
+    if rows * cols > MAX_GRID_CELLS:
+        raise ValueError(f"grid must contain <= {MAX_GRID_CELLS} cells")
     n_states = rows * cols
     terminals = {0, n_states - 1}
     actions = [0, 1, 2, 3]  # up, right, down, left
@@ -266,6 +297,7 @@ def value_iteration(mdp, gamma: float = 1.0, theta: float = 1e-8):
 
 
 def build_gambler_mdp(goal: int = 100, head_prob: float = 0.4):
+    goal = _validate_size(goal, "goal", MAX_GAMBLER_GOAL)
     if goal <= 1:
         raise ValueError("goal must be greater than 1")
     if not 0.0 <= head_prob <= 1.0:
@@ -275,6 +307,7 @@ def build_gambler_mdp(goal: int = 100, head_prob: float = 0.4):
 
 
 def gambler_value_iteration(goal: int = 100, head_prob: float = 0.4, theta: float = 1e-9, gamma: float = 1.0):
+    goal = _validate_size(goal, "goal", MAX_GAMBLER_GOAL)
     build_gambler_mdp(goal, head_prob)
     values = np.zeros(goal + 1)
     values[goal] = 1.0
@@ -294,7 +327,11 @@ def gambler_value_iteration(goal: int = 100, head_prob: float = 0.4, theta: floa
 
 
 def extract_optimal_stakes(values, goal: int = 100, head_prob: float = 0.4, gamma: float = 1.0):
+    goal = _validate_size(goal, "goal", MAX_GAMBLER_GOAL)
+    build_gambler_mdp(goal, head_prob)
     values = np.asarray(values, dtype=float)
+    if values.size != goal + 1:
+        raise ValueError("values must contain goal + 1 entries")
     policy = np.zeros(goal + 1, dtype=int)
     for s in range(1, goal):
         stakes = np.arange(1, min(s, goal - s) + 1)
