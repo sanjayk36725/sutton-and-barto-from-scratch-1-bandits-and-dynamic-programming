@@ -429,8 +429,42 @@ def value_iteration(mdp, gamma, theta):
 
     return V, policy
 
-# Step 19 - build_gambler_mdp (not yet solved)
-# TODO: implement
+# Step 19 - build_gambler_mdp
+def build_gambler_mdp(goal, head_prob):
+    n_states = goal + 1
+    n_actions = goal
+
+    P = []
+
+    for s in range(n_states):
+        # Terminal states
+        if s == 0 or s == goal:
+            P.append([[(1.0, s, 0.0)]])
+            continue
+
+        state_actions = []
+        max_stake = min(s, goal - s)
+
+        for a in range(max_stake):
+            stake = a + 1
+
+            win_state = s + stake
+            lose_state = s - stake
+
+            win_reward = 1.0 if win_state == goal else 0.0
+
+            state_actions.append([
+                (head_prob, win_state, win_reward),
+                (1.0 - head_prob, lose_state, 0.0)
+            ])
+
+        P.append(state_actions)
+
+    return {
+        "n_states": n_states,
+        "n_actions": n_actions,
+        "P": P
+    }
 
 # Step 20 - gambler_value_iteration (not yet solved)
 # TODO: implement
