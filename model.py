@@ -466,8 +466,42 @@ def build_gambler_mdp(goal, head_prob):
         "P": P
     }
 
-# Step 20 - gambler_value_iteration (not yet solved)
-# TODO: implement
+# Step 20 - gambler_value_iteration
+def gambler_value_iteration(goal, head_prob, theta=1e-10, gamma=1.0):
+    mdp = build_gambler_mdp(goal, head_prob)
+    P = mdp["P"]
+
+    V = np.zeros(goal + 1)
+
+    while True:
+        delta = 0.0
+
+        for s in range(1, goal):
+            old_value = V[s]
+
+            action_values = []
+
+            for a in range(len(P[s])):
+                value = 0.0
+
+                for prob, next_state, reward in P[s][a]:
+                    value += prob * (
+                        reward + gamma * V[next_state]
+                    )
+
+                action_values.append(value)
+
+            V[s] = max(action_values)
+            delta = max(delta, abs(V[s] - old_value))
+
+        # Terminals must remain zero
+        V[0] = 0.0
+        V[goal] = 0.0
+
+        if delta < theta:
+            break
+
+    return V
 
 # Step 21 - extract_optimal_stakes (not yet solved)
 # TODO: implement
