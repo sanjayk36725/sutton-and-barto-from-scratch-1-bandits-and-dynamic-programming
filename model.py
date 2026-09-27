@@ -341,8 +341,30 @@ def iterative_policy_evaluation(policy, mdp, gamma, theta):
 
     return V
 
-# Step 16 - greedy_policy_improvement (not yet solved)
-# TODO: implement
+# Step 16 - greedy_policy_improvement
+def greedy_policy_improvement(state_values, mdp, gamma):
+    n_states = mdp["n_states"]
+    n_actions = mdp["n_actions"]
+    P = mdp["P"]
+
+    policy = np.zeros(n_states, dtype=int)
+
+    for s in range(n_states):
+        action_values = []
+
+        for a in range(n_actions):
+            value = 0.0
+
+            for prob, next_state, reward in P[s][a]:
+                value += prob * (
+                    reward + gamma * state_values[next_state]
+                )
+
+            action_values.append(value)
+
+        policy[s] = int(np.argmax(action_values))
+
+    return policy
 
 # Step 17 - policy_iteration (not yet solved)
 # TODO: implement
