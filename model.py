@@ -392,8 +392,42 @@ def policy_iteration(mdp, gamma, theta):
 
     return state_values, policy
 
-# Step 18 - value_iteration (not yet solved)
-# TODO: implement
+# Step 18 - value_iteration
+def value_iteration(mdp, gamma, theta):
+    n_states = mdp["n_states"]
+    n_actions = mdp["n_actions"]
+    P = mdp["P"]
+
+    V = np.zeros(n_states)
+
+    while True:
+        delta = 0.0
+        new_V = V.copy()
+
+        for s in range(n_states):
+            action_values = []
+
+            for a in range(n_actions):
+                value = 0.0
+
+                for prob, next_state, reward in P[s][a]:
+                    value += prob * (
+                        reward + gamma * V[next_state]
+                    )
+
+                action_values.append(value)
+
+            new_V[s] = max(action_values)
+            delta = max(delta, abs(new_V[s] - V[s]))
+
+        V = new_V
+
+        if delta < theta:
+            break
+
+    policy = greedy_policy_improvement(V, mdp, gamma)
+
+    return V, policy
 
 # Step 19 - build_gambler_mdp (not yet solved)
 # TODO: implement
