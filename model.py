@@ -114,8 +114,23 @@ def ucb_action_select(q_values, action_counts, timestep, c):
     # np.argmax returns the smallest index when there is a tie
     return int(np.argmax(scores))
 
-# Step 12 - gradient_bandit_update (not yet solved)
-# TODO: implement
+# Step 12 - gradient_bandit_update
+def gradient_bandit_update(preferences, action, reward, average_reward, alpha):
+    # Softmax policy
+    exp_preferences = np.exp(preferences - np.max(preferences))
+    policy = exp_preferences / np.sum(exp_preferences)
+
+    advantage = reward - average_reward
+
+    # Gradient-bandit update
+    preferences = preferences.copy()
+    preferences[action] += alpha * advantage * (1 - policy[action])
+
+    for a in range(len(preferences)):
+        if a != action:
+            preferences[a] -= alpha * advantage * policy[a]
+
+    return preferences
 
 # Step 13 - bandit_parameter_study (not yet solved)
 # TODO: implement
