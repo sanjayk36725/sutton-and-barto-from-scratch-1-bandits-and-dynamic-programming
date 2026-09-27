@@ -102,8 +102,17 @@ def constant_step_size_update(q_values, action, reward, alpha):
 def optimistic_initialization(k, initial_value):
     return np.full(k, initial_value)
 
-# Step 11 - ucb_action_select (not yet solved)
-# TODO: implement
+# Step 11 - ucb_action_select
+def ucb_action_select(q_values, action_counts, timestep, c):
+    # Any unvisited arm is preferred
+    unvisited = np.where(action_counts == 0)[0]
+    if len(unvisited) > 0:
+        return int(unvisited[0])
+
+    scores = q_values + c * np.sqrt(np.log(timestep) / action_counts)
+
+    # np.argmax returns the smallest index when there is a tie
+    return int(np.argmax(scores))
 
 # Step 12 - gradient_bandit_update (not yet solved)
 # TODO: implement
