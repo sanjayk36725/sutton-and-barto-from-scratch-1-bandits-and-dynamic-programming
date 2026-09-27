@@ -56,8 +56,16 @@ def run_bandit_episode(true_values, n_steps, epsilon, rng):
 
     return np.asarray(rewards), np.asarray(actions)
 
-# Step 6 - track_rewards_and_optimal_actions (not yet solved)
-# TODO: implement
+# Step 6 - track_rewards_and_optimal_actions
+def track_rewards_and_optimal_actions(true_values, n_steps, epsilon, rng):
+    rewards, actions = run_bandit_episode(
+        true_values, n_steps, epsilon, rng
+    )
+
+    optimal_action = int(np.argmax(true_values))
+    optimal_flags = (actions == optimal_action).astype(float)
+
+    return rewards.astype(float), optimal_flags
 
 # Step 7 - average_bandit_curves (not yet solved)
 # TODO: implement
