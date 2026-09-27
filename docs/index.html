@@ -236,7 +236,7 @@
     </section>
 
     <footer class="footer">
-      <p>Built by <strong>@sanjayk36725</strong> on <a href="https://deep-ml.com" target="_blank">Deep-ML</a></p>
+      <p>Built by <strong>@sanjayk36725</strong> on <a href="https://deep-ml.com" target="_blank" rel="noopener noreferrer">Deep-ML</a></p>
     </footer>
   </div>
 
@@ -245,12 +245,10 @@
       const html = document.documentElement;
       const isDark = html.style.colorScheme === 'dark';
       html.style.colorScheme = isDark ? 'light' : 'dark';
-      localStorage.setItem('theme', isDark ? 'light' : 'dark');
-    }
+          }
     function initTheme() {
-      const saved = localStorage.getItem('theme');
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const isDark = saved === 'dark' || (saved === null && prefersDark);
+      const isDark = prefersDark;
       document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
     }
     initTheme();
