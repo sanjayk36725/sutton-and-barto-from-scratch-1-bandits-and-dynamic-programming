@@ -34,8 +34,27 @@ def epsilon_greedy_action(q_values, epsilon, rng):
 
     return int(np.argmax(q_values))
 
-# Step 5 - run_bandit_episode (not yet solved)
-# TODO: implement
+# Step 5 - run_bandit_episode
+def run_bandit_episode(true_values, n_steps, epsilon, rng):
+    k = len(true_values)
+    q_values = np.zeros(k, dtype=float)
+    action_counts = np.zeros(k, dtype=int)
+
+    rewards = []
+    actions = []
+
+    for _ in range(n_steps):
+        action = epsilon_greedy_action(q_values, epsilon, rng)
+        reward = pull_arm(true_values, action, rng)
+
+        q_values, action_counts = sample_average_update(
+            q_values, action_counts, action, reward
+        )
+
+        actions.append(action)
+        rewards.append(reward)
+
+    return np.asarray(rewards), np.asarray(actions)
 
 # Step 6 - track_rewards_and_optimal_actions (not yet solved)
 # TODO: implement
