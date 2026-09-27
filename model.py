@@ -503,6 +503,36 @@ def gambler_value_iteration(goal, head_prob, theta=1e-10, gamma=1.0):
 
     return V
 
-# Step 21 - extract_optimal_stakes (not yet solved)
-# TODO: implement
+# Step 21 - extract_optimal_stakes
+def extract_optimal_stakes(state_values, goal, head_prob, gamma=1.0):
+    stakes = np.zeros(goal + 1, dtype=int)
+
+    for s in range(1, goal):
+        max_stake = min(s, goal - s)
+
+        best_value = -np.inf
+        best_stake = 1
+
+        for stake in range(1, max_stake + 1):
+            win_state = s + stake
+            lose_state = s - stake
+
+            win_reward = 1.0 if win_state == goal else 0.0
+
+            value = (
+                head_prob * (
+                    win_reward + gamma * state_values[win_state]
+                )
+                + (1.0 - head_prob) * (
+                    gamma * state_values[lose_state]
+                )
+            )
+
+            if value > best_value:
+                best_value = value
+                best_stake = stake
+
+        stakes[s] = best_stake
+
+    return stakes
 
