@@ -1,538 +1,462 @@
-"""
-Sutton and Barto from Scratch 1: Bandits and Dynamic Programming
+"""Reference implementations for Sutton & Barto bandits and dynamic programming."""
 
-Assembled from your step-by-step solutions.
-"""
+from __future__ import annotations
 
 import numpy as np
 
-# Step 1 - create_bandit_testbed
-def create_bandit_testbed(k, seed, mean=0.0, std=1.0):
-    rng = np.random.RandomState(seed)
+
+MAX_SIMULATION_STEPS = 100_000
+MAX_BANDIT_ARMS = 10_000
+MAX_GRID_CELLS = 10_000
+MAX_GAMBLER_GOAL = 10_000
+
+
+def _validate_size(value: int, name: str, maximum: int) -> int:
+    """Validate an integer size before using it in a NumPy allocation."""
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
+        raise TypeError(f"{name} must be an integer")
+    value = int(value)
+    if value <= 0:
+        raise ValueError(f"{name} must be positive")
+    if value > maximum:
+        raise ValueError(f"{name} must be <= {maximum}")
+    return value
+
+
+def create_bandit_testbed(
+    k: int, seed: int, mean: float = 0.0, std: float = 1.0
+) -> np.ndarray:
+    """Create reproducible true action values for a k-armed bandit."""
+    k = _validate_size(k, "k", MAX_BANDIT_ARMS)
+    if std < 0:
+        raise ValueError("std must be non-negative")
+    rng = np.random.default_rng(seed)
     return rng.normal(loc=mean, scale=std, size=k)
 
-# Step 2 - pull_arm
-def pull_arm(true_values, action, rng):
-    return true_values[action] + rng.normal()
 
-# Step 3 - sample_average_update
-def sample_average_update(q_values, action_counts, action, reward):
-    q_new = q_values.copy()
-    c_new = action_counts.copy()
+def pull_arm(true_values: np.ndarray, action: int, rng) -> float:
+    """Sample a noisy reward from the selected bandit arm."""
+    if action < 0 or action >= len(true_values):
+        raise IndexError("action out of range")
+    return float(true_values[action] + rng.normal())
 
+
+def sample_average_update(q_values, action_counts, action: int, reward: float):
+    """Update an action-value estimate using the sample-average rule."""
+    q_new = np.asarray(q_values, dtype=float).copy()
+    c_new = np.asarray(action_counts, dtype=int).copy()
+    if action < 0 or action >= len(q_new):
+        raise IndexError("action out of range")
     c_new[action] += 1
     q_new[action] += (reward - q_new[action]) / c_new[action]
-
     return q_new, c_new
 
-# Step 4 - epsilon_greedy_action
-def epsilon_greedy_action(q_values, epsilon, rng):
-    k = len(q_values)
 
+def epsilon_greedy_action(q_values, epsilon: float, rng) -> int:
+    """Select an action with epsilon exploration and random greedy ties."""
+    if not 0.0 <= epsilon <= 1.0:
+        raise ValueError("epsilon must be in [0, 1]")
+    q = np.asarray(q_values, dtype=float)
+    if q.size == 0:
+        raise ValueError("q_values must not be empty")
     if rng.random() < epsilon:
-        return int(rng.integers(0, k))
+        return int(rng.integers(len(q)))
+    best = np.flatnonzero(np.isclose(q, np.max(q)))
+    return int(rng.choice(best))
 
-    return int(np.argmax(q_values))
 
-# Step 5 - run_bandit_episode
-def run_bandit_episode(true_values, n_steps, epsilon, rng):
-    k = len(true_values)
-    q_values = np.zeros(k, dtype=float)
-    action_counts = np.zeros(k, dtype=int)
+def run_bandit_episode(
+    true_values, n_steps: int, epsilon: float, rng, initial_q: float = 0.0
+):
+    """Run one stationary k-armed bandit episode."""
+    if isinstance(n_steps, bool) or not isinstance(n_steps, (int, np.integer)):
+        raise TypeError("n_steps must be an integer")
+    if n_steps < 0:
+        raise ValueError("n_steps must be non-negative")
+    if n_steps > MAX_SIMULATION_STEPS:
+        raise ValueError(f"n_steps must be <= {MAX_SIMULATION_STEPS}")
+    k = _validate_size(len(true_values), "number of bandit arms", MAX_BANDIT_ARMS)
+    q = np.full(k, float(initial_q))
+    counts = np.zeros(k, dtype=int)
+    rewards = np.empty(n_steps, dtype=float)
+    for t in range(n_steps):
+        action = epsilon_greedy_action(q, epsilon, rng)
+        reward = pull_arm(np.asarray(true_values), action, rng)
+        q, counts = sample_average_update(q, counts, action, reward)
+        rewards[t] = reward
+    return rewards
 
-    rewards = []
-    actions = []
 
-    for _ in range(n_steps):
-        action = epsilon_greedy_action(q_values, epsilon, rng)
-        reward = pull_arm(true_values, action, rng)
-
-        q_values, action_counts = sample_average_update(
-            q_values, action_counts, action, reward
-        )
-
-        actions.append(action)
-        rewards.append(reward)
-
-    return np.asarray(rewards), np.asarray(actions)
-
-# Step 6 - track_rewards_and_optimal_actions
-def track_rewards_and_optimal_actions(true_values, n_steps, epsilon, rng):
-    rewards, actions = run_bandit_episode(
-        true_values, n_steps, epsilon, rng
-    )
-
+def track_rewards_and_optimal_actions(true_values, n_steps: int, epsilon: float, rng):
+    """Track rewards and whether each selected action was optimal."""
+    if n_steps < 0:
+        raise ValueError("n_steps must be non-negative")
+    if n_steps > MAX_SIMULATION_STEPS:
+        raise ValueError(f"n_steps must be <= {MAX_SIMULATION_STEPS}")
+    q = np.zeros(len(true_values), dtype=float)
+    counts = np.zeros(len(true_values), dtype=int)
+    rewards = np.empty(n_steps, dtype=float)
+    optimal = np.empty(n_steps, dtype=float)
     optimal_action = int(np.argmax(true_values))
-    optimal_flags = (actions == optimal_action).astype(float)
+    for t in range(n_steps):
+        action = epsilon_greedy_action(q, epsilon, rng)
+        reward = pull_arm(np.asarray(true_values), action, rng)
+        q, counts = sample_average_update(q, counts, action, reward)
+        rewards[t] = reward
+        optimal[t] = float(action == optimal_action)
+    return rewards, optimal
 
-    return rewards.astype(float), optimal_flags
 
-# Step 7 - average_bandit_curves
-def average_bandit_curves(k, n_runs, n_steps, epsilon, seed):
-    all_rewards = []
-    all_optimal = []
-
-    for i in range(n_runs):
-        bandit = create_bandit_testbed(k, seed + i)
-        rng = np.random.default_rng(seed + i)
-
+def average_bandit_curves(
+    k: int, n_runs: int, n_steps: int, epsilon: float, seed: int = 0
+):
+    """Average reward and optimal-action curves across independent runs."""
+    k = _validate_size(k, "k", MAX_BANDIT_ARMS)
+    n_runs = _validate_size(n_runs, "n_runs", MAX_SIMULATION_STEPS)
+    n_steps = _validate_size(n_steps, "n_steps", MAX_SIMULATION_STEPS)
+    reward_sum = np.zeros(n_steps)
+    optimal_sum = np.zeros(n_steps)
+    for run in range(n_runs):
+        true_values = create_bandit_testbed(k, seed + run)
+        rng = np.random.default_rng(seed + 100_000 + run)
         rewards, optimal = track_rewards_and_optimal_actions(
-            bandit, n_steps, epsilon, rng
+            true_values, n_steps, epsilon, rng
         )
+        reward_sum += rewards
+        optimal_sum += optimal
+    return reward_sum / n_runs, optimal_sum / n_runs
 
-        all_rewards.append(rewards)
-        all_optimal.append(optimal)
 
-    mean_reward = np.mean(all_rewards, axis=0)
-    mean_optimal = np.mean(all_optimal, axis=0)
+def apply_random_walk_drift(true_values, drift_std: float, rng):
+    """Apply Gaussian random-walk drift to bandit true values."""
+    if drift_std < 0:
+        raise ValueError("drift_std must be non-negative")
+    values = np.asarray(true_values, dtype=float).copy()
+    return values + rng.normal(0.0, drift_std, size=values.shape)
 
-    return mean_reward, mean_optimal
 
-# Step 8 - apply_random_walk_drift
-def apply_random_walk_drift(true_values, drift_std, rng):
-    noise = rng.normal(0, drift_std, size=true_values.shape)
-    return true_values + noise
+def constant_step_size_update(q_values, action: int, reward: float, alpha: float):
+    """Apply the constant-step-size action-value update."""
+    if not 0.0 < alpha <= 1.0:
+        raise ValueError("alpha must be in (0, 1]")
+    q = np.asarray(q_values, dtype=float).copy()
+    if action < 0 or action >= len(q):
+        raise IndexError("action out of range")
+    q[action] += alpha * (reward - q[action])
+    return q
 
-# Step 9 - constant_step_size_update
-def constant_step_size_update(q_values, action, reward, alpha):
-    q_values[action] += alpha * (reward - q_values[action])
-    return q_values
 
-# Step 10 - optimistic_initialization
-def optimistic_initialization(k, initial_value):
-    return np.full(k, initial_value)
+def optimistic_initialization(k: int, initial_value: float = 5.0):
+    """Create optimistic initial action-value estimates."""
+    k = _validate_size(k, "k", MAX_BANDIT_ARMS)
+    return np.full(k, float(initial_value))
 
-# Step 11 - ucb_action_select
-def ucb_action_select(q_values, action_counts, timestep, c):
-    # Any unvisited arm is preferred
-    unvisited = np.where(action_counts == 0)[0]
-    if len(unvisited) > 0:
-        return int(unvisited[0])
 
-    scores = q_values + c * np.sqrt(np.log(timestep) / action_counts)
+def ucb_action_select(
+    q_values, action_counts, timestep: int, c: float = 2.0
+) -> int:
+    """Select an action using the upper-confidence-bound rule."""
+    q = np.asarray(q_values, dtype=float)
+    counts = np.asarray(action_counts, dtype=float)
+    if q.ndim != 1 or counts.ndim != 1 or len(q) != len(counts) or len(q) == 0:
+        raise ValueError("q_values and action_counts must be equal-length 1-D arrays")
+    if c < 0:
+        raise ValueError("c must be non-negative")
+    unseen = np.flatnonzero(counts <= 0)
+    if unseen.size:
+        return int(unseen[0])
+    t = max(int(timestep), 1)
+    bonus = c * np.sqrt(np.log(t + 1.0) / counts)
+    return int(np.argmax(q + bonus))
 
-    # np.argmax returns the smallest index when there is a tie
-    return int(np.argmax(scores))
 
-# Step 12 - gradient_bandit_update
-def gradient_bandit_update(preferences, action, reward, average_reward, alpha):
-    # Softmax policy
-    exp_preferences = np.exp(preferences - np.max(preferences))
-    policy = exp_preferences / np.sum(exp_preferences)
-
+def gradient_bandit_update(
+    preferences, action: int, reward: float, average_reward: float, alpha: float
+):
+    """Update gradient-bandit preferences using a softmax policy."""
+    if alpha <= 0:
+        raise ValueError("alpha must be positive")
+    h = np.asarray(preferences, dtype=float).copy()
+    if action < 0 or action >= len(h) or len(h) == 0:
+        raise IndexError("action out of range")
+    shifted = h - np.max(h)
+    probs = np.exp(shifted)
+    probs /= np.sum(probs)
     advantage = reward - average_reward
+    h -= alpha * advantage * probs
+    h[action] += alpha * advantage
+    return h
 
-    # Gradient-bandit update
-    preferences = preferences.copy()
-    preferences[action] += alpha * advantage * (1 - policy[action])
 
-    for a in range(len(preferences)):
-        if a != action:
-            preferences[a] -= alpha * advantage * policy[a]
+def bandit_parameter_study(n_runs: int, n_steps: int, seed: int, settings):
+    """Compare common bandit strategies over repeated simulated runs."""
+    n_runs = _validate_size(n_runs, "n_runs", MAX_SIMULATION_STEPS)
+    n_steps = _validate_size(n_steps, "n_steps", MAX_SIMULATION_STEPS)
+    if not isinstance(settings, (list, tuple)) or not settings:
+        raise ValueError("settings must be a non-empty list or tuple")
 
-    return preferences
-
-# Step 13 - bandit_parameter_study
-def bandit_parameter_study(n_runs, n_steps, seed, settings):
-    results = {}
-
+    results = []
     for setting in settings:
+        if not isinstance(setting, dict) or "method" not in setting or "param" not in setting:
+            raise ValueError("each setting must contain method and param")
         method = setting["method"]
-        param = setting["param"]
-        nonstationary = setting.get("nonstationary", False)
-
-        final_rewards = []
-
-        for i in range(n_runs):
-            rng = np.random.default_rng(seed + i)
-
-            if nonstationary:
-                true_values = np.zeros(10)
-            else:
-                true_values = create_bandit_testbed(10, seed + i)
-
-            if method == "optimistic":
-                q_values = optimistic_initialization(10, param)
-            else:
-                q_values = np.zeros(10)
-
-            action_counts = np.zeros(10, dtype=int)
-            preferences = np.zeros(10)
+        param = float(setting["param"])
+        run_scores = []
+        for run in range(n_runs):
+            true_values = create_bandit_testbed(10, seed + run)
+            rng = np.random.default_rng(seed + 10_000 + run)
+            q = np.zeros(10)
+            counts = np.zeros(10, dtype=int)
+            prefs = np.zeros(10)
             avg_reward = 0.0
-
             rewards = []
-
-            for t in range(n_steps):
-                if method == "epsilon_greedy":
-                    epsilon = param
-                    if rng.random() < epsilon:
-                        action = int(rng.integers(10))
-                    else:
-                        action = int(np.argmax(q_values))
-
-                    reward = rng.normal(true_values[action], 1.0)
-                    action_counts[action] += 1
-
-                    n = action_counts[action]
-                    q_values[action] += (reward - q_values[action]) / n
-
-                elif method == "constant_step":
-                    if rng.random() < 0.1:
-                        action = int(rng.integers(10))
-                    else:
-                        action = int(np.argmax(q_values))
-
-                    reward = rng.normal(true_values[action], 1.0)
-                    action_counts[action] += 1
-
-                    q_values = constant_step_size_update(
-                        q_values, action, reward, param
-                    )
-
-                elif method == "optimistic":
-                    action = int(np.argmax(q_values))
-
-                    reward = rng.normal(true_values[action], 1.0)
-                    action_counts[action] += 1
-
-                    q_values = constant_step_size_update(
-                        q_values, action, reward, 0.1
-                    )
-
+            if method == "optimistic":
+                q[:] = param
+            for t in range(1, n_steps + 1):
+                if method in {"epsilon_greedy", "optimistic"}:
+                    eps = param if method == "epsilon_greedy" else 0.0
+                    action = epsilon_greedy_action(q, eps, rng)
                 elif method == "ucb":
-                    unvisited = np.where(action_counts == 0)[0]
-
-                    if len(unvisited) > 0:
-                        action = int(unvisited[0])
-                    else:
-                        action = ucb_action_select(
-                            q_values, action_counts, t + 1, param
-                        )
-
-                    reward = rng.normal(true_values[action], 1.0)
-                    action_counts[action] += 1
-
-                    n = action_counts[action]
-                    q_values[action] += (reward - q_values[action]) / n
-
+                    action = ucb_action_select(q, counts, t, param)
                 elif method == "gradient":
-                    exp_p = np.exp(preferences - np.max(preferences))
-                    policy = exp_p / np.sum(exp_p)
-
-                    action = int(rng.choice(10, p=policy))
-                    reward = rng.normal(true_values[action], 1.0)
-
-                    avg_reward = (
-                        avg_reward * t + reward
-                    ) / (t + 1)
-
-                    preferences = gradient_bandit_update(
-                        preferences,
-                        action,
-                        reward,
-                        avg_reward,
-                        param
-                    )
-
+                    p = np.exp(prefs - np.max(prefs))
+                    p /= p.sum()
+                    action = int(rng.choice(len(p), p=p))
                 else:
-                    raise ValueError("Unknown method")
+                    raise ValueError(f"unknown method: {method}")
 
+                reward = pull_arm(true_values, action, rng)
                 rewards.append(reward)
+                counts[action] += 1
 
-                if nonstationary:
-                    true_values = apply_random_walk_drift(
-                        true_values, 0.01, rng
+                if method == "gradient":
+                    prefs = gradient_bandit_update(
+                        prefs, action, reward, avg_reward, param
                     )
+                    avg_reward += (reward - avg_reward) / t
+                else:
+                    q[action] += (reward - q[action]) / counts[action]
 
-            final_rewards.append(float(rewards[-1]))
-
-        label = f"{method}({param})"
-        if nonstationary:
-            label += ",ns"
-
-        results[label] = float(np.mean(final_rewards))
-
+            run_scores.append(float(np.mean(rewards)))
+        results.append(
+            {"method": method, "param": param, "average_reward": float(np.mean(run_scores))}
+        )
     return results
 
-# Step 14 - build_gridworld_mdp
-def build_gridworld_mdp():
-    n_states = 16
-    n_actions = 4
 
-    P = {}
-
+def build_gridworld_mdp(rows: int = 4, cols: int = 4):
+    """Build a deterministic rectangular gridworld MDP."""
+    rows = _validate_size(rows, "rows", MAX_GRID_CELLS)
+    cols = _validate_size(cols, "cols", MAX_GRID_CELLS)
+    if rows * cols > MAX_GRID_CELLS:
+        raise ValueError(f"grid must contain <= {MAX_GRID_CELLS} cells")
+    n_states = rows * cols
+    terminals = {0, n_states - 1}
+    actions = [0, 1, 2, 3]  # up, right, down, left
+    transitions = {}
     for s in range(n_states):
-        P[s] = {}
-
-        
-        if s == 0 or s == 15:
-            for a in range(n_actions):
-                P[s][a] = [(1.0, s, 0.0)]
-            continue
-
-        r = s // 4
-        c = s % 4
-
-        for a in range(n_actions):
-            nr, nc = r, c
-
-            if a == 0:     
-                nr -= 1
-            elif a == 1:     
-                nc += 1
-            elif a == 2:     
-                nr += 1
-            elif a == 3:        
-                nc -= 1
-
-            if nr < 0 or nr >= 4 or nc < 0 or nc >= 4:
-                next_state = s
+        transitions[s] = {}
+        r, c = divmod(s, cols)
+        for a in actions:
+            if s in terminals:
+                ns, reward, done = s, 0.0, True
             else:
-                next_state = 4 * nr + nc
-
-            P[s][a] = [(1.0, next_state, -1.0)]
-
+                nr, nc = r, c
+                if a == 0:
+                    nr = max(0, r - 1)
+                elif a == 1:
+                    nc = min(cols - 1, c + 1)
+                elif a == 2:
+                    nr = min(rows - 1, r + 1)
+                else:
+                    nc = max(0, c - 1)
+                ns = nr * cols + nc
+                reward, done = -1.0, ns in terminals
+            transitions[s][a] = [(1.0, ns, reward, done)]
     return {
+        "rows": rows,
+        "cols": cols,
         "n_states": n_states,
-        "n_actions": n_actions,
-        "P": P
+        "actions": actions,
+        "terminals": terminals,
+        "P": transitions,
     }
 
-# Step 15 - iterative_policy_evaluation
-def iterative_policy_evaluation(policy, mdp, gamma, theta):
-    n_states = mdp["n_states"]
-    n_actions = mdp["n_actions"]
-    P = mdp["P"]
 
-    V = np.zeros(n_states)
+def _action_value(mdp, state: int, action: int, values, gamma: float) -> float:
+    """Return the Bellman action value for one state-action pair."""
+    total = 0.0
+    for prob, ns, reward, done in mdp["P"][state][action]:
+        total += prob * (reward + (0.0 if done else gamma * values[ns]))
+    return float(total)
 
+
+def iterative_policy_evaluation(
+    mdp, policy=None, gamma: float = 1.0, theta: float = 1e-8
+):
+    """Evaluate a deterministic or stochastic policy until convergence."""
+    if not 0.0 <= gamma <= 1.0:
+        raise ValueError("gamma must be in [0, 1]")
+    if theta <= 0:
+        raise ValueError("theta must be positive")
+    n = mdp["n_states"]
+    actions = mdp["actions"]
+    if policy is None:
+        policy = np.full((n, len(actions)), 1.0 / len(actions))
+    policy = np.asarray(policy, dtype=float)
+    values = np.zeros(n)
     while True:
         delta = 0.0
-
-        for s in range(n_states):
-            old_value = V[s]
-            new_value = 0.0
-
-            # Deterministic policy
+        new_values = values.copy()
+        for s in range(n):
+            if s in mdp["terminals"]:
+                continue
             if policy.ndim == 1:
-                actions = [(1.0, int(policy[s]))]
-
-            # Stochastic policy
+                action_probs = {int(policy[s]): 1.0}
+            elif policy.ndim == 2 and policy.shape == (n, len(actions)):
+                action_probs = {
+                    a: float(policy[s, i])
+                    for i, a in enumerate(actions)
+                    if policy[s, i] > 0
+                }
             else:
-                actions = [
-                    (policy[s, a], a)
-                    for a in range(n_actions)
-                    if policy[s, a] > 0
-                ]
-
-            for action_prob, a in actions:
-                for prob, next_state, reward in P[s][a]:
-                    new_value += (
-                        action_prob
-                        * prob
-                        * (reward + gamma * V[next_state])
-                    )
-
-            V[s] = new_value
-            delta = max(delta, abs(old_value - new_value))
-
-        if delta <= theta:
+                raise ValueError("policy shape must be (n_states,) or (n_states, n_actions)")
+            v = sum(
+                prob * _action_value(mdp, s, a, values, gamma)
+                for a, prob in action_probs.items()
+            )
+            delta = max(delta, abs(v - values[s]))
+            new_values[s] = v
+        values = new_values
+        if delta < theta:
             break
+    return values
 
-    return V
 
-# Step 16 - greedy_policy_improvement
-def greedy_policy_improvement(state_values, mdp, gamma):
-    n_states = mdp["n_states"]
-    n_actions = mdp["n_actions"]
-    P = mdp["P"]
-
-    policy = np.zeros(n_states, dtype=int)
-
-    for s in range(n_states):
-        action_values = []
-
-        for a in range(n_actions):
-            value = 0.0
-
-            for prob, next_state, reward in P[s][a]:
-                value += prob * (
-                    reward + gamma * state_values[next_state]
-                )
-
-            action_values.append(value)
-
-        policy[s] = int(np.argmax(action_values))
-
+def greedy_policy_improvement(mdp, values, gamma: float = 1.0):
+    """Compute the greedy deterministic policy for state values."""
+    if not 0.0 <= gamma <= 1.0:
+        raise ValueError("gamma must be in [0, 1]")
+    values = np.asarray(values, dtype=float)
+    if values.size != mdp["n_states"]:
+        raise ValueError("values length must match mdp state count")
+    policy = np.zeros(mdp["n_states"], dtype=int)
+    for s in range(mdp["n_states"]):
+        if s in mdp["terminals"]:
+            policy[s] = 0
+            continue
+        qs = [_action_value(mdp, s, a, values, gamma) for a in mdp["actions"]]
+        policy[s] = int(np.argmax(qs))
     return policy
 
-# Step 17 - policy_iteration
-def policy_iteration(mdp, gamma, theta):
-    n_states = mdp["n_states"]
 
-    # Start with action 0 for every state
-    policy = np.zeros(n_states, dtype=int)
-
+def policy_iteration(mdp, gamma: float = 1.0, theta: float = 1e-8):
+    """Solve an MDP using alternating policy evaluation and improvement."""
+    n = mdp["n_states"]
+    n_actions = len(mdp["actions"])
+    deterministic = np.zeros(n, dtype=int)
     while True:
-        # Policy evaluation
-        state_values = iterative_policy_evaluation(
-            policy, mdp, gamma, theta
-        )
+        probs = np.zeros((n, n_actions))
+        probs[np.arange(n), deterministic] = 1.0
+        values = iterative_policy_evaluation(mdp, probs, gamma, theta)
+        improved = greedy_policy_improvement(mdp, values, gamma)
+        if np.array_equal(improved, deterministic):
+            return values, deterministic
+        deterministic = improved
 
-        # Greedy policy improvement
-        new_policy = greedy_policy_improvement(
-            state_values, mdp, gamma
-        )
 
-        # Stop when policy no longer changes
-        if np.array_equal(policy, new_policy):
-            break
-
-        policy = new_policy
-
-    return state_values, policy
-
-# Step 18 - value_iteration
-def value_iteration(mdp, gamma, theta):
-    n_states = mdp["n_states"]
-    n_actions = mdp["n_actions"]
-    P = mdp["P"]
-
-    V = np.zeros(n_states)
-
+def value_iteration(mdp, gamma: float = 1.0, theta: float = 1e-8):
+    """Solve an MDP using the Bellman optimality update."""
+    if not 0.0 <= gamma <= 1.0:
+        raise ValueError("gamma must be in [0, 1]")
+    if theta <= 0:
+        raise ValueError("theta must be positive")
+    values = np.zeros(mdp["n_states"])
     while True:
         delta = 0.0
-        new_V = V.copy()
-
-        for s in range(n_states):
-            action_values = []
-
-            for a in range(n_actions):
-                value = 0.0
-
-                for prob, next_state, reward in P[s][a]:
-                    value += prob * (
-                        reward + gamma * V[next_state]
-                    )
-
-                action_values.append(value)
-
-            new_V[s] = max(action_values)
-            delta = max(delta, abs(new_V[s] - V[s]))
-
-        V = new_V
-
+        new_values = values.copy()
+        for s in range(mdp["n_states"]):
+            if s in mdp["terminals"]:
+                continue
+            best = max(_action_value(mdp, s, a, values, gamma) for a in mdp["actions"])
+            delta = max(delta, abs(best - values[s]))
+            new_values[s] = best
+        values = new_values
         if delta < theta:
             break
+    return values, greedy_policy_improvement(mdp, values, gamma)
 
-    policy = greedy_policy_improvement(V, mdp, gamma)
 
-    return V, policy
-
-# Step 19 - build_gambler_mdp
-def build_gambler_mdp(goal, head_prob):
-    n_states = goal + 1
-    n_actions = goal
-
-    P = []
-
-    for s in range(n_states):
-        # Terminal states
-        if s == 0 or s == goal:
-            P.append([[(1.0, s, 0.0)]])
-            continue
-
-        state_actions = []
-        max_stake = min(s, goal - s)
-
-        for a in range(max_stake):
-            stake = a + 1
-
-            win_state = s + stake
-            lose_state = s - stake
-
-            win_reward = 1.0 if win_state == goal else 0.0
-
-            state_actions.append([
-                (head_prob, win_state, win_reward),
-                (1.0 - head_prob, lose_state, 0.0)
-            ])
-
-        P.append(state_actions)
-
-    return {
-        "n_states": n_states,
-        "n_actions": n_actions,
-        "P": P
+def build_gambler_mdp(goal: int = 100, head_prob: float = 0.4):
+    """Build the Gambler's Problem MDP transition model."""
+    goal = _validate_size(goal, "goal", MAX_GAMBLER_GOAL)
+    if goal <= 1:
+        raise ValueError("goal must be greater than 1")
+    if not 0.0 <= head_prob <= 1.0:
+        raise ValueError("head_prob must be in [0, 1]")
+    actions = {
+        s: list(range(1, min(s, goal - s) + 1))
+        for s in range(1, goal)
     }
+    return {"goal": goal, "head_prob": head_prob, "actions": actions}
 
-# Step 20 - gambler_value_iteration
-def gambler_value_iteration(goal, head_prob, theta=1e-10, gamma=1.0):
-    mdp = build_gambler_mdp(goal, head_prob)
-    P = mdp["P"]
 
-    V = np.zeros(goal + 1)
-
+def gambler_value_iteration(
+    goal: int = 100,
+    head_prob: float = 0.4,
+    theta: float = 1e-9,
+    gamma: float = 1.0,
+):
+    """Compute Gambler's Problem optimal state values."""
+    goal = _validate_size(goal, "goal", MAX_GAMBLER_GOAL)
+    build_gambler_mdp(goal, head_prob)
+    if not 0.0 < gamma <= 1.0:
+        raise ValueError("gamma must be in (0, 1]")
+    if theta <= 0:
+        raise ValueError("theta must be positive")
+    values = np.zeros(goal + 1)
+    values[goal] = 1.0
     while True:
         delta = 0.0
-
+        new_values = values.copy()
         for s in range(1, goal):
-            old_value = V[s]
-
-            action_values = []
-
-            for a in range(len(P[s])):
-                value = 0.0
-
-                for prob, next_state, reward in P[s][a]:
-                    value += prob * (
-                        reward + gamma * V[next_state]
-                    )
-
-                action_values.append(value)
-
-            V[s] = max(action_values)
-            delta = max(delta, abs(V[s] - old_value))
-
-        # Terminals must remain zero
-        V[0] = 0.0
-        V[goal] = 0.0
-
+            stakes = range(1, min(s, goal - s) + 1)
+            returns = [
+                head_prob * gamma * values[s + a]
+                + (1.0 - head_prob) * gamma * values[s - a]
+                for a in stakes
+            ]
+            best = max(returns) if returns else 0.0
+            delta = max(delta, abs(best - values[s]))
+            new_values[s] = best
+        values = new_values
         if delta < theta:
             break
+    return values
 
-    return V
 
-# Step 21 - extract_optimal_stakes
-def extract_optimal_stakes(state_values, goal, head_prob, gamma=1.0):
-    stakes = np.zeros(goal + 1, dtype=int)
-
+def extract_optimal_stakes(
+    values, goal: int = 100, head_prob: float = 0.4, gamma: float = 1.0
+):
+    """Extract the first optimal stake for every non-terminal capital state."""
+    goal = _validate_size(goal, "goal", MAX_GAMBLER_GOAL)
+    build_gambler_mdp(goal, head_prob)
+    values = np.asarray(values, dtype=float)
+    if values.size != goal + 1:
+        raise ValueError("values must contain goal + 1 entries")
+    if not 0.0 < gamma <= 1.0:
+        raise ValueError("gamma must be in (0, 1]")
+    policy = np.zeros(goal + 1, dtype=int)
     for s in range(1, goal):
-        max_stake = min(s, goal - s)
-
-        best_value = -np.inf
-        best_stake = 1
-
-        for stake in range(1, max_stake + 1):
-            win_state = s + stake
-            lose_state = s - stake
-
-            win_reward = 1.0 if win_state == goal else 0.0
-
-            value = (
-                head_prob * (
-                    win_reward + gamma * state_values[win_state]
-                )
-                + (1.0 - head_prob) * (
-                    gamma * state_values[lose_state]
-                )
-            )
-
-            if value > best_value:
-                best_value = value
-                best_stake = stake
-
-        stakes[s] = best_stake
-
-    return stakes
-
+        stakes = np.arange(1, min(s, goal - s) + 1)
+        if stakes.size == 0:
+            continue
+        returns = (
+            head_prob * gamma * values[s + stakes]
+            + (1.0 - head_prob) * gamma * values[s - stakes]
+        )
+        best = np.max(returns)
+        policy[s] = int(
+            stakes[np.flatnonzero(np.isclose(returns, best, atol=1e-12))[0]]
+        )
+    return policy
