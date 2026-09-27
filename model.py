@@ -132,8 +132,127 @@ def gradient_bandit_update(preferences, action, reward, average_reward, alpha):
 
     return preferences
 
-# Step 13 - bandit_parameter_study (not yet solved)
-# TODO: implement
+# Step 13 - bandit_parameter_study
+def bandit_parameter_study(n_runs, n_steps, seed, settings):
+    results = {}
+
+    for setting in settings:
+        method = setting["method"]
+        param = setting["param"]
+        nonstationary = setting.get("nonstationary", False)
+
+        final_rewards = []
+
+        for i in range(n_runs):
+            rng = np.random.default_rng(seed + i)
+
+            if nonstationary:
+                true_values = np.zeros(10)
+            else:
+                true_values = create_bandit_testbed(10, seed + i)
+
+            if method == "optimistic":
+                q_values = optimistic_initialization(10, param)
+            else:
+                q_values = np.zeros(10)
+
+            action_counts = np.zeros(10, dtype=int)
+            preferences = np.zeros(10)
+            avg_reward = 0.0
+
+            rewards = []
+
+            for t in range(n_steps):
+                if method == "epsilon_greedy":
+                    epsilon = param
+                    if rng.random() < epsilon:
+                        action = int(rng.integers(10))
+                    else:
+                        action = int(np.argmax(q_values))
+
+                    reward = rng.normal(true_values[action], 1.0)
+                    action_counts[action] += 1
+
+                    n = action_counts[action]
+                    q_values[action] += (reward - q_values[action]) / n
+
+                elif method == "constant_step":
+                    if rng.random() < 0.1:
+                        action = int(rng.integers(10))
+                    else:
+                        action = int(np.argmax(q_values))
+
+                    reward = rng.normal(true_values[action], 1.0)
+                    action_counts[action] += 1
+
+                    q_values = constant_step_size_update(
+                        q_values, action, reward, param
+                    )
+
+                elif method == "optimistic":
+                    action = int(np.argmax(q_values))
+
+                    reward = rng.normal(true_values[action], 1.0)
+                    action_counts[action] += 1
+
+                    q_values = constant_step_size_update(
+                        q_values, action, reward, 0.1
+                    )
+
+                elif method == "ucb":
+                    unvisited = np.where(action_counts == 0)[0]
+
+                    if len(unvisited) > 0:
+                        action = int(unvisited[0])
+                    else:
+                        action = ucb_action_select(
+                            q_values, action_counts, t + 1, param
+                        )
+
+                    reward = rng.normal(true_values[action], 1.0)
+                    action_counts[action] += 1
+
+                    n = action_counts[action]
+                    q_values[action] += (reward - q_values[action]) / n
+
+                elif method == "gradient":
+                    exp_p = np.exp(preferences - np.max(preferences))
+                    policy = exp_p / np.sum(exp_p)
+
+                    action = int(rng.choice(10, p=policy))
+                    reward = rng.normal(true_values[action], 1.0)
+
+                    avg_reward = (
+                        avg_reward * t + reward
+                    ) / (t + 1)
+
+                    preferences = gradient_bandit_update(
+                        preferences,
+                        action,
+                        reward,
+                        avg_reward,
+                        param
+                    )
+
+                else:
+                    raise ValueError("Unknown method")
+
+                rewards.append(reward)
+
+                if nonstationary:
+                    true_values = apply_random_walk_drift(
+                        true_values, 0.01, rng
+                    )
+
+            final_rewards.append(float(rewards[-1]))
+
+        label = f"{method}({param})"
+        if nonstationary:
+            label += ",ns"
+
+        results[label] = float(np.mean(final_rewards))
+
+    return results
 
 # Step 14 - build_gridworld_mdp (not yet solved)
 # TODO: implement
